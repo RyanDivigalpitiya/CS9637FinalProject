@@ -1,4 +1,4 @@
-#Ryan Divigalpitiya | Ruobing Wei | Aritra Roy
+#Ryan Divigalpitiya
 #CS9637 Final Project - Predicting Obesity based on Lifestyle Choices
 
 #IMPORT BASIC PACKAGES
@@ -25,6 +25,44 @@ import os
 from pandas.core.common import SettingWithCopyWarning
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 #METHODS
+def importData(targetVariable, path): #returns 'importedData' dictionary. Keys are self-explanatory, below:
+    # importData() extracts all the important data from the imported CSV file that we are building our model from:
+    # 'RawData'                        # the raw dataframe itself, untouched
+    # 'allFeatures'                    # list of column labels ie. features
+    # 'numericalFeatureList'           # list of numerical features
+    # 'categoricalFeatureList'         # list of categorical features
+    # 'categoriesPerCategoricalColumn' : dictionary where each key is a categorical feature, key returns list of possible categories for that feature
+    # 'targetClasses'                  : list of all possible target classes found in the target variable
+
+    #read in csv fata
+    df = pd.read_csv(path)
+    # Split Numerical vs. Categorical Data, return them as individual lists:
+    def getNumericalAndCatColumnLists():
+        numerical_columns = list(df.drop(targetVariable,axis=1).describe().columns)
+        categorical_columns = list(set(df.drop(targetVariable,axis=1).columns) - set(numerical_columns))
+        df.dtypes[numerical_columns]   #sanity check. should all be either ints or floats
+        df.dtypes[categorical_columns] #sanity check. should all be either strings or objects
+        return numerical_columns, categorical_columns
+    #returns categoriesPerColumn (dictionary[key = 'column name'] = list of categories in that column)
+    def extractCategoriesInFeatures(categoricalFeatureList):
+        x_features = df.drop(targetVariable,axis=1)
+        categoriesPerColumn = {}
+        for catorigicalColumn in categoricalFeatureList:
+            categoriesPerColumn[catorigicalColumn] = list(RawData[catorigicalColumn].value_counts().index)
+        return categoriesPerColumn
+
+    featureList = getNumericalAndCatColumnLists()
+    categoriesPerCategoricalColumn = extractCategoriesInFeatures(featureList[1])
+    #Dictionary 'importedData' that will be returned
+    importedData = {
+        'RawData'                        : df,
+        'allFeatures'                    : list(df.drop(targetVariable,axis=1).columns),
+        'numericalFeatureList'           : featureList[0],
+        'categoricalFeatureList'         : featureList[1],
+        'categoriesPerCategoricalColumn' : categoriesPerCategoricalColumn,
+        'targetClasses'                  : list(df[targetVariable].value_counts().index)
+    }
+    return importedData
 def compute_performance_Series(yhat, y):
     correctCounter = 0
     for index in range((y.shape[0])):
@@ -39,17 +77,6 @@ def compute_performance_Array(yhat, y):
             correctCounter += 1
     acc = (correctCounter / y.shape[0])
     return (round(acc*100,2))
-def getNumericalAndCatColumnLists():
-    # Split Numerical vs. Categorical Data, return them as individual lists:
-    numerical_columns = list(RawData.drop('NObeyesdad',axis=1).describe().columns)
-    categorical_columns = list(set(RawData.drop('NObeyesdad',axis=1).columns) - set(numerical_columns))
-    RawData.dtypes[numerical_columns]   #sanity check. should all be either ints or floats
-    RawData.dtypes[categorical_columns] #sanity check. should all be either strings or objects
-    # print("Numerical features:")
-    # print(numerical_columns)
-    # print("\nCategorical features:")
-    # print(categorical_columns)
-    return numerical_columns, categorical_columns
 def targetClassProportions():
     #Ouput number of 1)target classes, 2) counts per class,3) proportion of each class
     target_distr = RawData[targetVariable].value_counts()
@@ -81,13 +108,20 @@ def visualCheck(yhat,y): #returns concatenated yhat + y
     return compareY_df
 
 ##PIPELINES
+
+class ExperimentalTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        print("Initialization")
+
+    def fit(self, X, y = None):
+        return self
+
+    def transform(self, X, y = None):
+        X_copy = X.copy()
+        #perform transform on X_copy
+        return X_copy
+
 # pre-processing
-def extractCategoriesInFeatures(): #returns categoriesPerColumn (dictionary[key = 'column name'] = list of categories in that column)
-    x_features = RawData.drop(targetVariable,axis=1)
-    categoriesPerColumn = {}
-    for catorigicalColumn in categoricalFeatureList:
-        categoriesPerColumn[catorigicalColumn] = list(RawData[catorigicalColumn].value_counts().index)
-    return categoriesPerColumn
 def encodeXPipline(dataframe,selectedFeatures): #returns X_encoded (array)
     # encodeXPipline encodes categorical features
     X_nonencoded = dataframe[selectedFeatures]
@@ -301,22 +335,23 @@ def showFeatureImportances(model,selectedFeatures): #for Random Forest estimator
 #BeginningofScript-------------------------------------------------------------------------------------------------------------------------------
 
 ## READ IN DATA ## (modify for Mac vs. Windows)
-################################################################################################################################
-RawData = pd.read_csv('Virtual Envs/TensorFlow/My Python Files/ObesityData.csv')
-################################################################################################################################
-targetVariable  = 'NObeyesdad'
-allFeatures     = list(RawData.drop(targetVariable,axis=1).columns)
-numericalFeatureList, categoricalFeatureList = getNumericalAndCatColumnLists()
-categoriesPerCategoricalColumn = extractCategoriesInFeatures()
-targetClasses  = list(RawData[targetVariable].value_counts().index)
-################################################################
+#############################################################################################################################################################
+importedData                    = importData('NObeyesdad', '/Users/ryandivigalpitiya/Virtual Envs/TensorFlow/My Python Files/ObesityModels/ObesityData.csv')
+#############################################################################################################################################################
+RawData                         = importedData['RawData']
+allFeatures                     = importedData['allFeatures']
+numericalFeatureList            = importedData['numericalFeatureList']
+categoricalFeatureList          = importedData['categoricalFeatureList']
+categoriesPerCategoricalColumn  = importedData['categoriesPerCategoricalColumn']
+targetClasses                   = importedData['targetClasses']
+#############################################################################################################################################################
 
 ## OPTIONAL: LOAD MODEL FROM DISK ##
-################################################################################################################################
+############################################################
 # filename = r'C:\Users\Admin\Downloads\bestRFmodelV1.sav'
 # loadedModel = pickle.load(open(filename,'rb'))
 # loadedModel
-################################################################################################################################
+############################################################
 
 #Class Proportions:
 classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts())

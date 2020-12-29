@@ -10,6 +10,8 @@ import itertools
 import math
 
 #IMPORT MODEL PACKAGES
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
@@ -24,6 +26,7 @@ import warnings
 import os
 from pandas.core.common import SettingWithCopyWarning
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
+
 #METHODS
 def importData(targetVariable, path): #returns 'importedData' dictionary. Keys are self-explanatory, below:
     # importData() extracts all the important data from the imported CSV file that we are building our model from:
@@ -48,7 +51,7 @@ def importData(targetVariable, path): #returns 'importedData' dictionary. Keys a
         x_features = df.drop(targetVariable,axis=1)
         categoriesPerColumn = {}
         for catorigicalColumn in categoricalFeatureList:
-            categoriesPerColumn[catorigicalColumn] = list(RawData[catorigicalColumn].value_counts().index)
+            categoriesPerColumn[catorigicalColumn] = list(df[catorigicalColumn].value_counts().index)
         return categoriesPerColumn
 
     featureList = getNumericalAndCatColumnLists()
@@ -109,17 +112,25 @@ def visualCheck(yhat,y): #returns concatenated yhat + y
 
 ##PIPELINES
 
-class ExperimentalTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        print("Initialization")
+class X_Encoder(BaseEstimator, TransformerMixin):
+    def __init__(self,selectedFeatures):
+        self.selectedFeatures = selectedFeatures
 
     def fit(self, X, y = None):
         return self
 
     def transform(self, X, y = None):
-        X_copy = X.copy()
-        #perform transform on X_copy
-        return X_copy
+        # encodeXPipline encodes categorical features
+        X_nonencoded = X[self.selectedFeatures]
+        for columnName in categoriesPerCategoricalColumn:
+            if columnName in self.selectedFeatures:
+                X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
+        X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
+        return X_encoded
+
+#Testing pipe:
+pipe_X_encoder = X_Encoder(allFeatures)
+pipe_X_encoder.transform(RawData.drop(targetVariable,axis=1))
 
 # pre-processing
 def encodeXPipline(dataframe,selectedFeatures): #returns X_encoded (array)
@@ -336,8 +347,10 @@ def showFeatureImportances(model,selectedFeatures): #for Random Forest estimator
 
 ## READ IN DATA ## (modify for Mac vs. Windows)
 #############################################################################################################################################################
-importedData                    = importData('NObeyesdad', '/Users/ryandivigalpitiya/Virtual Envs/TensorFlow/My Python Files/ObesityModels/ObesityData.csv')
+targetVariable                  = 'NObeyesdad'
+importedData                    = importData(targetVariable, '/Users/ryandivigalpitiya/Virtual Envs/TensorFlow/My Python Files/ObesityModels/ObesityData.csv')
 #############################################################################################################################################################
+#These must be defined in order for the above functions to work (most of them make use of these variables)
 RawData                         = importedData['RawData']
 allFeatures                     = importedData['allFeatures']
 numericalFeatureList            = importedData['numericalFeatureList']

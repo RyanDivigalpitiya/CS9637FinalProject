@@ -27,7 +27,7 @@ import os
 from pandas.core.common import SettingWithCopyWarning
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 
-#METHODS
+#FUNCTIONS
 def importData(targetVariable, path): #returns 'importedData' dictionary. Keys are self-explanatory, below:
     # importData() extracts all the important data from the imported CSV file that we are building our model from:
     # 'RawData'                        # the raw dataframe itself, untouched
@@ -80,19 +80,6 @@ def compute_performance_Array(yhat, y):
             correctCounter += 1
     acc = (correctCounter / y.shape[0])
     return (round(acc*100,2))
-def targetClassProportions():
-    #Ouput number of 1)target classes, 2) counts per class,3) proportion of each class
-    target_distr = RawData[targetVariable].value_counts()
-    ds = pd.Series(index = target_distr.index).astype('str')
-    for index,item in enumerate(target_distr):
-        ds[index] = str(round((item/2111)*100,1))+'%'
-    RawData_targetDistr = pd.DataFrame(columns = [str(len(target_distr.index))+' Classes','Counts','Percentages'], index = target_distr.index)
-    RawData_targetDistr[str(len(target_distr.index))+' Classes'] = target_distr.index
-    RawData_targetDistr['Counts'] = RawData[targetVariable].value_counts()
-    RawData_targetDistr['Percentages'] = ds
-    RawData_targetDistr.reset_index(inplace=True)
-    RawData_targetDistr.drop(columns = ['index'],inplace=True)
-    return RawData_targetDistr
 def n_choose_k(n,k):
     return math.factorial(n)/(math.factorial(k)*(math.factorial(n-k)))
 def calculateNumIterations(numberOfFeatures):
@@ -109,247 +96,6 @@ def visualCheck(yhat,y): #returns concatenated yhat + y
     ySeries = pd.Series(data=y)
     compareY_df = pd.concat([ySeries,yhatSeries],axis=1)
     return compareY_df
-
-##PIPELINES
-
-class X_Encoder(BaseEstimator, TransformerMixin):
-    def __init__(self,selectedFeatures):
-        self.selectedFeatures = selectedFeatures
-
-    def fit(self, X, y = None):
-        return self
-
-    def transform(self, X, y = None):
-        # encodeXPipline encodes categorical features
-        X_nonencoded = X[self.selectedFeatures]
-        for columnName in categoriesPerCategoricalColumn:
-            if columnName in self.selectedFeatures:
-                X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
-        X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
-        return X_encoded
-
-
-# pre-processing
-def encodeXPipline(dataframe,selectedFeatures): #returns X_encoded (array)
-    # encodeXPipline encodes categorical features
-    X_nonencoded = dataframe[selectedFeatures]
-    # categoricalColumns = categoriesPerColumn.keys()
-    for columnName in categoriesPerCategoricalColumn:
-        if columnName in selectedFeatures:
-            X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
-    X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
-    return X_encoded
-def scaleXPipline(x): #returns X_normalized
-    #Normalize X
-    return StandardScaler().fit_transform(x)
-def encodeYPipline(dataframe): #returns encodedTargets (y-values array)
-    # encodeYPipline encodes target labels if dealing with classifcation.
-    # Handles binary + multi-classifaction
-    encodedTargets = np.zeros(dataframe.shape[0])
-    for i in range(dataframe.shape[0]):
-        for index,label in enumerate(targetClasses):
-            if dataframe[targetVariable].iloc[i] == label:
-                encodedTargets[i] = index+1
-                break
-    return encodedTargets
-def preprocessXpipline(dataframe,selectedFeatures): #returns scaleXPipline(encodeXPipline(dataframe,selectedFeatures))
-    return scaleXPipline(encodeXPipline(dataframe,selectedFeatures))
-def splitXYPipline(X,y,test_size): #returns injectProcessedData (4-item tuple)
-    # splitXYPipline splits into train and test sets
-    # returns injectXtrain, injectYtrain, injectXtest, injectYtest
-    # to be injected into next pipline
-    ##################################################################
-    Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, test_size=test_size, random_state=0, stratify=y) # maintain class proportions
-    ##################################################################
-    #Final pre-processed data to be used in training + evaluating models
-    ##################################################################
-    injectXtrain = Xtrain
-    injectYtrain = ytrain
-    ###################################
-    injectXtest = Xtest
-    injectYtest = ytest
-    ##################################################################
-    injectProcessedData = []
-    injectProcessedData.append(injectXtrain)
-    injectProcessedData.append(injectYtrain)
-    injectProcessedData.append(injectXtest)
-    injectProcessedData.append(injectYtest)
-    return injectProcessedData
-# models
-def trainEvallogregPipeline( injectProcessedData, hyper_parameters): #returns (acc,model)
-    #LOGISTICAL REGRESSION PIPELINE - returns 2-item tuple: (test set accuracy (as a percentage), model object)
-    #PIPELINE CONTAINS STEPS FOR:
-    #CONSTRUCTING MODEL WITH SPECIFIED HYPER-PARAMETERS
-    #TRAINING
-    #EVALUATING MODEL FOR SELECTED FEATURES + HYPER-PARAMETERS
-    ## ******************************************************************************************************** ##
-
-    ## BUILD MODEL ##
-    if hyper_parameters == None:
-        lm = LogisticRegression(multi_class = 'ovr',
-                               solver      = 'liblinear')
-    else:
-        lm = LogisticRegression(multi_class = 'ovr',
-                                solver      = 'liblinear',
-                                max_iter    = hyper_parameters[0],
-                                penalty     = hyper_parameters[1],
-                                C           = hyper_parameters[2])
-
-    ## UNPACK PRE-PROCESSED DATA ##
-    ##################################################################
-    injectXtrain = injectProcessedData[0]
-    injectYtrain = injectProcessedData[1]
-    ###################################
-    injectXtest = injectProcessedData[2]
-    injectYtest = injectProcessedData[3]
-    ##################################################################
-    ## TRAIN MODEL ##
-    lm.fit(injectXtrain, injectYtrain)
-    ## EVALUATE MODEL ##
-    ypred = lm.predict(injectXtest)
-    acc = compute_performance_Array(ypred,injectYtest)
-    return (acc,lm)
-def trainEvalforestPipeline( injectProcessedData, hyper_parameters): #returns (acc,model)
-    ## BUILD MODEL ##
-    if hyper_parameters == None:
-        rf = RandomForestClassifier(random_state = 1, n_estimators=10)
-    else:
-        rf = RandomForestClassifier(random_state = 1,
-                                    n_estimators        = hyper_parameters[0],
-                                    bootstrap           = hyper_parameters[1],
-                                    max_depth           = hyper_parameters[2],
-                                    max_features        = hyper_parameters[3],
-                                    min_samples_leaf    = hyper_parameters[4],
-                                    min_samples_split   = hyper_parameters[5])
-
-    ## UNPACK PRE-PROCESSED DATA ##
-    ##################################################################
-    injectXtrain = injectProcessedData[0]
-    injectYtrain = injectProcessedData[1]
-    ###################################
-    injectXtest = injectProcessedData[2]
-    injectYtest = injectProcessedData[3]
-    ##################################################################
-    ## TRAIN MODEL ##
-    rf.fit(injectXtrain, injectYtrain)
-    ## EVALUATE MODEL ##
-    ypred = rf.predict(injectXtest)
-    acc = compute_performance_Array(ypred,injectYtest)
-    return (acc,rf)
-def trainEvalxgbPipeline(    injectProcessedData, hyper_parameters): #retursn (acc,model)
-    ## BUILD MODEL ##
-    if hyper_parameters == None:
-        xgb = XGBClassifier(random_state = 1)
-    else:
-        xgb = XGBClassifier(random_state = 1,
-                                    n_estimators        = hyper_parameters[0],
-                                    colsample_bytree    = hyper_parameters[1],
-                                    max_depth           = hyper_parameters[2],
-                                    reg_alpha           = hyper_parameters[3],
-                                    reg_lambda          = hyper_parameters[4],
-                                    subsample           = hyper_parameters[5],
-                                    learning_rate       = hyper_parameters[6],
-                                    gamma               = hyper_parameters[7],
-                                    min_child_weight    = hyper_parameters[8],
-                                    sampling_method     = hyper_parameters[9])
-
-    ## UNPACK PRE-PROCESSED DATA ##
-    ##################################################################
-    injectXtrain = injectProcessedData[0]
-    injectYtrain = injectProcessedData[1]
-    ###################################
-    injectXtest = injectProcessedData[2]
-    injectYtest = injectProcessedData[3]
-    ##################################################################
-    ## TRAIN MODEL ##
-    xgb.fit(injectXtrain, injectYtrain)
-    ## EVALUATE MODEL ##
-    ypred = xgb.predict(injectXtest)
-    acc = compute_performance_Array(ypred,injectYtest)
-    return (acc,xgb)
-def trainEvalknnPipeline(    injectProcessedData, hyper_parameters): #retursn (acc,model)
-    ## BUILD MODEL ##
-    if hyper_parameters == None:
-        knn = KNeighborsClassifier()
-    else:
-        knn = KNeighborsClassifier( n_neighbors = hyper_parameters[0],
-                                    weights     = hyper_parameters[1],
-                                    algorithm   = hyper_parameters[2],
-                                    p           = hyper_parameters[3])
-
-    ## UNPACK PRE-PROCESSED DATA ##
-    ##################################################################
-    injectXtrain = injectProcessedData[0]
-    injectYtrain = injectProcessedData[1]
-    ###################################
-    injectXtest = injectProcessedData[2]
-    injectYtest = injectProcessedData[3]
-    ##################################################################
-    ## TRAIN MODEL ##
-    knn.fit(injectXtrain, injectYtrain)
-    ## EVALUATE MODEL ##
-    ypred = knn.predict(injectXtest)
-    acc = compute_performance_Array(ypred,injectYtest)
-    return (acc,knn)
-# train + evaluate multiple models at once: options for models = { "lr": hyper_parameters, "rf": hyper_parameters, "gb": hyper_parameters }
-def runEntirePipline(dataframe, selectedFeatures, models, printAcc=False): #returns modelResults (dictionary, "lr":(acc,modelObject))
-    ## PRE-PROCESSING ##
-    X = scaleXPipline( encodeXPipline(dataframe, selectedFeatures))
-    y = encodeYPipline(dataframe)
-    injectProcessedData = splitXYPipline(X,y,0.25)
-    ## UNPACK REQUESTED MODELS + TRAIN/EVALUATE EACH ##
-    # models = { "lr": hyper_parameters, "rf": hyper_parameters, "gb": hyper_parameters, "kn":hyper_parameters }
-    modelResults={}
-    #Log Reg Model
-    if "lr" in models:
-        acc, model = trainEvallogregPipeline( injectProcessedData, hyper_parameters = models["lr"])
-        modelResults["lr"] = (acc, model)
-        if printAcc:
-            print("Log Reg Accuracy: ", acc,"%",sep='')
-    #Random Forest Model
-    if "rf" in models:
-        acc, model = trainEvalforestPipeline( injectProcessedData, hyper_parameters = models["rf"])
-        modelResults["rf"] = (acc, model)
-        if printAcc:
-            print("Random Forest Accuracy: ", acc,"%",sep='')
-    #XGBoost Model
-    if "gb" in models:
-        acc, model = trainEvalxgbPipeline( injectProcessedData, hyper_parameters = models["gb"])
-        modelResults["gb"] = (acc, model)
-        if printAcc:
-            print("XGB Accuracy: ", acc,"%",sep='')
-    #kNN Model
-    if "kn" in models:
-        acc, model = trainEvalknnPipeline( injectProcessedData, hyper_parameters = models["kn"])
-        modelResults["kn"] = (acc, model)
-        if printAcc:
-            print("kNN Accuracy: ", acc,"%",sep='')
-
-    return modelResults
-
-##VISUALIZATIONS
-def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
-    importances = model.feature_importances_
-    indices = np.argsort(importances)[::-1]
-    fm, ax = plt.subplots(figsize=(3,8))
-    plt.title("Variable Importances - XGBoost")
-    sns.set_color_codes("pastel")
-    dfe = encodeXPipline(RawData,selectedFeatures)
-    columnsEnc = list(dfe.columns)
-    sns.barplot(y=[columnsEnc[i] for i in indices], x=importances[indices], label='Total',color='b')
-    ax.set(ylabel="Variable",xlabel = "Variable Importance (Gini)")
-    sns.despine(left=True, bottom=True)
-def displayClassProportions(exportToCSV=False):
-    #Displays class proportions, set 'exportToCSV' to True if you want to export them to a CSV file
-    classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts().index)
-    classProportions['Counts'] = RawData[targetVariable].value_counts().values
-    classProportions['Proportions'] = (round((RawData[targetVariable].value_counts() / 2111)*100,1)).values
-    if exportToCSV:
-        classProportions.to_csv('/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/classProp.csv',index=False)
-    classProportions.drop('Counts',axis=1).plot.bar()
-    return classProportions
-
-#Parameter Seach functions
 def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bestParameters
     #Takes ParamterGrid() and a Model() estimator and
     #searches for best set of hyper-parameters using compute_performance_Array()
@@ -381,7 +127,46 @@ def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bes
     #Return results
     return bestAccuracy, bestModel, bestParameters
 
-#EndOfImports+Definitions-------------------------------------------------------------------------------------------------------------------------------
+##TRANSFORMERS
+class X_Encoder(BaseEstimator, TransformerMixin):
+    def __init__(self,selectedFeatures):
+        self.selectedFeatures = selectedFeatures
+
+    def fit(self, X, y = None):
+        return self
+
+    def transform(self, X, y = None):
+        # encodeXPipline encodes categorical features
+        X_nonencoded = X[self.selectedFeatures]
+        for columnName in categoriesPerCategoricalColumn:
+            if columnName in self.selectedFeatures:
+                X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
+        X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
+        return X_encoded
+
+##VISUALIZATIONS
+def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    fm, ax = plt.subplots(figsize=(3,8))
+    plt.title("Variable Importances - XGBoost")
+    sns.set_color_codes("pastel")
+    dfe = encodeXPipline(RawData,selectedFeatures)
+    columnsEnc = list(dfe.columns)
+    sns.barplot(y=[columnsEnc[i] for i in indices], x=importances[indices], label='Total',color='b')
+    ax.set(ylabel="Variable",xlabel = "Variable Importance (Gini)")
+    sns.despine(left=True, bottom=True)
+def displayClassProportions(exportToCSV=False):
+    #Displays class proportions, set 'exportToCSV' to True if you want to export them to a CSV file
+    classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts().index)
+    classProportions['Counts'] = RawData[targetVariable].value_counts().values
+    classProportions['Proportions'] = (round((RawData[targetVariable].value_counts() / 2111)*100,1)).values
+    if exportToCSV:
+        classProportions.to_csv('/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/classProp.csv',index=False)
+    classProportions.drop('Counts',axis=1).plot.bar()
+    return classProportions
+
+#EndOfImports+FunctionDefinitions----------------------------------------------------------------------------------------------------------------
 #BeginningofScript-------------------------------------------------------------------------------------------------------------------------------
 
 ## READ IN DATA ## (modify for Mac vs. Windows)
@@ -463,39 +248,7 @@ results_XGB = hyperParameterSearch(XGBClassifier(), paramGrid_XGB)
 
 #OLD:
 
-#Baseline performance (No tuning)
-# acc,model = runEntirePipline(RawData,allFeatures,targetVariable,printAcc=True)
-hyper_parameters = None
-# optFeatures = ['Gender','Age','family_history_with_overweight','FCVC','NCP','CAEC','SMOKE','CH2O','SCC','FAF','TUE','CALC','MTRANS']
-# models = { "lr": hyper_parameters, "rf": hyper_parameters, "gb": hyper_parameters }
-#Test all models for baseeline tests:
-model = { "lr":None, "rf":None, "gb":None }
-#Remove Height and Weight features (and target variable)
-features = RawData.drop(columns=[targetVariable,'Height','Weight']).columns
-modelResults = runEntirePipline(RawData, features, model, printAcc=True)
-#Remove Age + Family History in additon to Height and Weight features (and target variable) for comparison
-features = RawData.drop(columns=[targetVariable,'Height','Weight','Age','family_history_with_overweight']).columns
-modelResults = runEntirePipline(RawData, features, model, printAcc=True)
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-## TESTING BASELINE MODELS ON ALL DATA ##
-lrModel = modelResults['lr'][1]
-rfModel = modelResults['rf'][1]
-gbModel = modelResults['gb'][1]
-##
-X = preprocessXpipline(RawData,features)
-lrYhat = lrModel.predict(X)
-rfYhat = rfModel.predict(X)
-gbYhat = gbModel.predict(X)
-lrPerformanceAllData = compute_performance_Array(lrYhat,encodeYPipline(RawData))
-rfPerformanceAllData = compute_performance_Array(rfYhat,encodeYPipline(RawData))
-gbPerformanceAllData = compute_performance_Array(gbYhat,encodeYPipline(RawData))
-
-lrPerformanceAllData
-rfPerformanceAllData
-gbPerformanceAllData
-
-visualCheck(gbYhat,encodeYPipline(RawData)).head(25)
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -580,234 +333,6 @@ bestAcc = output[0][1]
 bestFeatureCombo
 bestAcc
 
-#HYPER-PARAMTER TUNING--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## LOGISITCAL REGRESSION ## <----- IGNORE! HAS NOT BEEN UPDATED. WE ARE DROPPING LOG REG DUE TO POOR PERFOMANCEE
-
-# We will search over  hyper-parmeter sets for most optimal params
-#outdated method, update it before using:
-def hyperParamSearch_LogReg(features):
-
-    # Search over this hyper-parameter space
-    max_iters    = [100,1000,10000]         # (1) number of iterations
-    penalties    = ['l1', 'l2']             # (2) type of regularization
-    C_values     = np.logspace(-4, 4, 20)   # (3) inverse of regularization strength
-    multi_class  = 'ovr'                    # (_) this is a multi-classification problem (non-binary), thus, we use one-vs-all multi-class logistical regression
-    solver       = 'liblinear'              # (_) using one-vs-all multi-classifaction, thus, must use liblinear solver
-    ###############################################################
-    hyper_parameters = [max_iters, penalties, C_values]
-    ###############################################################
-    #Number of hyper-params in hyper-parameter space:
-    print("Number of Hyper-Parameters:",len(hyper_parameters[0])*len(hyper_parameters[1])*len(hyper_parameters[2]))
-
-    bestAcc = 0
-    progressBar = 0
-    X = scaleXPipline( encodeXPipline(RawData, features))
-    y = encodeYPipline(RawData)
-    injectProcessedData = splitXYPipline(X,y,0.25)
-    # iterating over hyper-parameter space:
-    for max_iter in hyper_parameters[0]:
-        for penalty in hyper_parameters[1]:
-            for C in hyper_parameters[2]:
-                progressBar += 1
-                print(progressBar,end=" ")
-                selected_hyper_parameters = [max_iter,penalty,C]
-                acc, model = trainEvallogregPipeline( injectProcessedData, selected_hyper_parameters)
-
-                if acc > bestAcc:
-                    bestAcc = acc
-                    bestModel = model
-                    optimHypParameters = hyper_parameters
-    print("LogReg Best Tuned Accuracy: ",bestAcc,"%",sep='')
-    return bestAcc, bestModel, optimHypParameters
-
-bestAccLogReg, optimHypParametersReg, optimFeatureComboReg = hyperParamSearch_LogReg(allFeatures)
-
-##########
-bestAccReg
-##########
-optimHypParametersReg
-##########
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## XTREME GRADIENT BOOST TUNING ##
-
-# We will search over the sets for most optimal params
-def hyperParamSearch_GB(features):
-
-    # Search over this hyper-parameter space:
-    n_estimators        = [600,10000]
-    colsample_bytree    = [0.75,0.8,0.85]
-    max_depth           = [20, 50, 75]
-    reg_alpha           = [1]
-    reg_lambda          = [2, 5, 10]
-    subsample           = [0.55, 0.6, .65]
-    learning_rate       = [0.5]
-    gamma               = [.5,1,2]
-    min_child_weight    = [0.01]
-    sampling_method     = ['uniform']
-
-    ###############################################################
-    hyper_parameters = [n_estimators, colsample_bytree, max_depth, reg_alpha, reg_lambda, subsample, learning_rate, gamma, min_child_weight, sampling_method]
-    ###############################################################
-    #Number of hyper-params in hyper-parameter space:
-
-    paramCounter = len(n_estimators)* len(colsample_bytree)* len(max_depth)* len(reg_alpha)* len(reg_lambda)* len(subsample)* len(learning_rate)* len(gamma)* len(min_child_weight)* len(sampling_method)
-    print("Number of Hyper-Parameters:",paramCounter)
-
-    bestAcc = 0
-    progressBarOne = 0
-    progressBarTwo = 0
-    X = scaleXPipline( encodeXPipline(RawData, features))
-    y = encodeYPipline(RawData)
-    injectProcessedData = splitXYPipline(X,y,0.25)
-    # iterating over hyper-parameter space:
-    for p1 in hyper_parameters[0]:
-        for p2 in hyper_parameters[1]:
-            for p3 in hyper_parameters[2]:
-                for p4 in hyper_parameters[3]:
-                    for p5 in hyper_parameters[4]:
-                        progressBarOne += 1
-                        print("\n",progressBarOne)
-                        for p6 in hyper_parameters[5]:
-                            for p7 in hyper_parameters[6]:
-                                for p8 in hyper_parameters[7]:
-                                    for p9 in hyper_parameters[8]:
-                                        for p10 in hyper_parameters[9]:
-                                            progressBarTwo += 1
-                                            print(progressBarTwo,end=" ")
-                                            selected_hyper_parameters = [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]
-                                            acc, model = trainEvalxgbPipeline( injectProcessedData, hyper_parameters = selected_hyper_parameters)
-
-                                            if acc > bestAcc:
-                                                bestAcc = acc
-                                                bestModel = model
-                                                optimHypParameters = selected_hyper_parameters
-
-    print("XGB Best Tuned Accuracy: ",bestAcc,"%",sep='')
-    return bestAcc, bestModel, optimHypParameters
-
-bestFeatureCombo = ['Gender','Age','family_history_with_overweight','FAVC','NCP','CAEC','CH2O','SCC','FAF','TUE','CALC']
-bestAccGB, bestModelGB, optimHypParametersGB = hyperParamSearch_GB(bestFeatureCombo)
-##########
-bestAccGB
-##########
-optimHypParametersGB
-##########
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## RANDOM FOREST TUNING ##
-
-# We will search over hyper-parameter sets for most optimal params
-def hyperParamSearch_RF(features):
-
-    # Search over this hyper-parameter space:
-    n_estimators        = [10000,100000]
-    bootstrap           = [False]
-    max_depth           = [10,20,50,None]
-    max_features        = ['auto']
-    min_samples_leaf    = [1,2,4]
-    min_samples_split   = [2,5]
-    ###############################################################
-    hyper_parameters = [n_estimators, bootstrap, max_depth, max_features, min_samples_leaf, min_samples_split]
-    ###############################################################
-    #Number of hyper-params in hyper-parameter space:
-
-    paramCounter = len(n_estimators)* len(bootstrap)* len(max_depth)* len(max_features)* len(min_samples_leaf)* len(min_samples_split)
-    print("Number of Hyper-Parameters:",paramCounter)
-
-    bestAcc = 0
-    progressBarOne = 0
-    progressBarTwo = 0
-    X = scaleXPipline( encodeXPipline( RawData, features))
-    y = encodeYPipline(RawData)
-    injectProcessedData = splitXYPipline(X,y,0.25)
-    # iterating over hyper-parameter space:
-    for p1 in hyper_parameters[0]:
-        print("\n",p1,"n_estimators")
-        for p2 in hyper_parameters[1]:
-            for p3 in hyper_parameters[2]:
-                progressBarOne += 1
-                print("\n",progressBarOne)
-                for p4 in hyper_parameters[3]:
-                    for p5 in hyper_parameters[4]:
-                        for p6 in hyper_parameters[5]:
-                            progressBarTwo += 1
-                            print(progressBarTwo,end=" ")
-                            selected_hyper_parameters = [p1,p2,p3,p4,p5,p6]
-                            acc, model = trainEvalforestPipeline( injectProcessedData, hyper_parameters = selected_hyper_parameters)
-
-                            if acc > bestAcc:
-                                bestAcc = acc
-                                bestModel = model
-                                optimHypParameters = selected_hyper_parameters
-
-    print("RF Best Tuned Accuracy: ",bestAcc,"%",sep='')
-    return bestAcc, bestModel, optimHypParameters
-
-bestRFAcc, bestRFmodel, optimHypParametersRF = hyperParamSearch_RF(bestFeatureComboRF)
-
-##########
-bestRFAcc
-##########
-optimHypParametersRF
-##########
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## K-NEAREST NEIGHBOURS TUNING ##
-
-# We will search over the above 10 hyper-parameter sets for most optimal params
-def hyperParamSearch_kNN(features):
-
-    # Search over this hyper-parameter space for XGB:
-    n_neighbors = [3,5,7,9,11,13,15]
-    weights     = ['uniform', 'distance']
-    algorithm   = ['auto', 'ball_tree','kd_tree']
-    p           = [1,2]
-    ###############################################################
-    hyper_parameters = [n_neighbors, weights, algorithm, p]
-    ###############################################################
-    #Number of hyper-params in hyper-parameter space:
-
-    paramCounter = len(n_neighbors)* len(weights)* len(algorithm)* len(p)
-    print("Number of Hyper-Parameters:",paramCounter)
-
-    bestAcc = 0
-    progressBarOne = 0
-    progressBarTwo = 0
-    X = scaleXPipline( encodeXPipline( RawData, features))
-    y = encodeYPipline(RawData)
-    injectProcessedData = splitXYPipline(X,y,0.25)
-    # iterating over hyper-parameter space:
-    for p1 in hyper_parameters[0]:
-        print("\n",p1,"n_neighbors")
-        for p2 in hyper_parameters[1]:
-            for p3 in hyper_parameters[2]:
-                for p4 in hyper_parameters[3]:
-                    progressBarTwo += 1
-                    print(progressBarTwo,end=" ")
-                    selected_hyper_parameters = [p1,p2,p3,p4]
-                    acc, model = trainEvalknnPipeline( injectProcessedData, selected_hyper_parameters)
-
-                    if acc > bestAcc:
-                        bestAcc = acc
-                        bestModel = model
-                        optimHypParameters = selected_hyper_parameters
-
-    print("kNN Best Tuned Accuracy: ",bestAcc,"%",sep='')
-    return bestAcc, bestModel, optimHypParameters
-
-bestkNNAcc, bestkNNmodel, optimHypParameterskNN = hyperParamSearch_kNN(bestFeatureCombo)
-
-##########
-bestkNNAcc
-##########
-optimHypParameterskNN
-##########
 
 #MODEL PERSISTANCE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -846,7 +371,7 @@ pickle.dump(rfModel,open(filename,'wb'))
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-# FEATURE IMPORTANCES PER MODEL
+## FEATURE IMPORTANCES PER MODEL ##
 
 #RF
 #trained model:
@@ -911,7 +436,7 @@ dfCounts = pd.DataFrame(data=counts,index=index)
 dfCounts.to_csv('/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/dfCounts.csv',index=False)
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-## ATTEMPT TO GENERATE AUROC CURVES ##
+## GENERATE MULTI-CLASS AUROC CURVES ##
 ## SKLearn suggests a technique called macro-averaging which we will do here
 ## It revolves around approaching TP and FP calculations for multiclassifcation with a binarized one-versus-all approach
 ## Macro-averaging is suggested if classes are balanced as they are in our dataset

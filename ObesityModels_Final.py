@@ -18,8 +18,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split, ParameterGrid
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import roc_curve, auc
 import pickle
 import warnings
@@ -128,9 +128,6 @@ class X_Encoder(BaseEstimator, TransformerMixin):
         X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
         return X_encoded
 
-#Testing pipe:
-pipe_X_encoder = X_Encoder(allFeatures)
-pipe_X_encoder.transform(RawData.drop(targetVariable,axis=1))
 
 # pre-processing
 def encodeXPipline(dataframe,selectedFeatures): #returns X_encoded (array)
@@ -330,7 +327,7 @@ def runEntirePipline(dataframe, selectedFeatures, models, printAcc=False): #retu
 
     return modelResults
 
-##GRAPHS
+##VISUALIZATIONS
 def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
     importances = model.feature_importances_
     indices = np.argsort(importances)[::-1]
@@ -342,6 +339,48 @@ def showFeatureImportances(model,selectedFeatures): #for Random Forest estimator
     sns.barplot(y=[columnsEnc[i] for i in indices], x=importances[indices], label='Total',color='b')
     ax.set(ylabel="Variable",xlabel = "Variable Importance (Gini)")
     sns.despine(left=True, bottom=True)
+def displayClassProportions(exportToCSV=False):
+    #Displays class proportions, set 'exportToCSV' to True if you want to export them to a CSV file
+    classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts().index)
+    classProportions['Counts'] = RawData[targetVariable].value_counts().values
+    classProportions['Proportions'] = (round((RawData[targetVariable].value_counts() / 2111)*100,1)).values
+    if exportToCSV:
+        classProportions.to_csv('/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/classProp.csv',index=False)
+    classProportions.drop('Counts',axis=1).plot.bar()
+    return classProportions
+
+#Parameter Seach functions
+def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bestParameters
+    #Takes ParamterGrid() and a Model() estimator and
+    #searches for best set of hyper-parameters using compute_performance_Array()
+    numOfParams = len(paramGrid_XGB)
+    loopCounter  = 0
+    bestAccuracy = 0
+    for paramaterSet in paramGrid:
+        #Progress bar
+        if loopCounter   == round(numOfParams*0.20):
+            print("20% Complete...",end='\n\n')
+        elif loopCounter == round(numOfParams*0.40):
+            print("40% Complete...",end='\n\n')
+        elif loopCounter == round(numOfParams*0.60):
+            print("60% Complete...",end='\n\n')
+        elif loopCounter == round(numOfParams*0.80):
+            print("80% Complete...",end='\n\n')
+        loopCounter += 1
+        #Train/fit model on selected hyper-parameters
+        model.set_params(**paramaterSet)
+        accuracy = compute_performance_Array( model.fit(Xtrain,ytrain).predict(Xtest) , ytest)
+        # Save best results
+        if accuracy > bestAccuracy:
+            bestAccuracy = accuracy
+            bestModel = model
+            bestParameters = paramaterSet
+    #Print results
+    print("Best Found Accuracy: "  , bestAccuracy, "%", sep='')
+    print("Best Found Parameters:" , bestParameters)
+    #Return results
+    return bestAccuracy, bestModel, bestParameters
+
 #EndOfImports+Definitions-------------------------------------------------------------------------------------------------------------------------------
 #BeginningofScript-------------------------------------------------------------------------------------------------------------------------------
 
@@ -366,12 +405,63 @@ targetClasses                   = importedData['targetClasses']
 # loadedModel
 ############################################################
 
-#Class Proportions:
-classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts())
-classProportions['Counts'] = RawData[targetVariable].value_counts()
-classProportions['Proportions'] = round((RawData[targetVariable].value_counts() / 2111)*100,1)
-classProportions.to_csv('/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/classProp.csv',index=False)
 
+## MAKE PRE-PROCESSING PIPELINE ##
+X_pipe = make_pipeline(X_Encoder(allFeatures),StandardScaler()).fit(RawData.drop(targetVariable,axis=1))
+y_pipe = LabelEncoder().fit(RawData[targetVariable])
+
+## SPLIT TRAINING/TESTING DATA ##
+Xtrain, Xtest, ytrain, ytest = train_test_split(
+    X_pipe.transform(RawData[allFeatures]),
+    y_pipe.transform(RawData[targetVariable]),
+    test_size=0.25,
+    random_state=0 )
+
+############################################################
+## BASELINE TESTS ##
+############################################################
+
+#RF
+#LogReg
+#KNN
+#XGBOOST
+
+
+############################################################
+## HYPER-PARAMTER TUNING ##
+############################################################
+
+# Random Forest HP:
+paramGrid_rf = ParameterGrid({
+    'random_state'        :[1],
+    'n_estimators'        :[100,500,1000,10000],
+    'bootstrap'           :[True,False],
+    'max_depth'           :[3,5,10,20,50,75,100,None],
+    'min_samples_leaf'    :[1,2,4,10],
+    'min_samples_split'   :[2,5,10]
+    })
+
+# XGBOOST HP:
+paramGrid_XGB = ParameterGrid({
+    'random_state'      :[1],
+    'n_estimators'      :[600,10000],
+    'colsample_bytree'  :[0.75,0.8,0.85],
+    'max_depth'         :[20, 50, 75, 'auto'],
+    'reg_alpha'         :[1],
+    'reg_lambda'        :[2,5,10],
+    'subsample'         :[0.55, 0.6, .65],
+    'learning_rate'     :[0.5],
+    'gamma'             :[.5,1,2],
+    'min_child_weight'  :[0.01],
+    'sampling_method'   :['uniform'] })
+
+
+results_rf  = hyperParameterSearch(RandomForestClassifier(), paramGrid_rf)
+results_XGB = hyperParameterSearch(XGBClassifier(), paramGrid_XGB)
+
+############################################################
+
+#OLD:
 
 #Baseline performance (No tuning)
 # acc,model = runEntirePipline(RawData,allFeatures,targetVariable,printAcc=True)

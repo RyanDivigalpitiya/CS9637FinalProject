@@ -25,14 +25,16 @@ from sklearn.metrics import roc_curve, auc
 import pickle
 import warnings
 import os
+
+#Suppress SettingWithCopyWarning but be careful of forgetting  about this
 from pandas.core.common import SettingWithCopyWarning
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 
 #FUNCTIONS
-def importData(targetVariable, path): #returns 'importedData' dictionary. Keys are self-explanatory, below:
+def importData(targetVariable, path): #returns 'importedData' dictionary. Keys are explained below:
     # importData() extracts all the important data from the imported CSV file that we are building our model from:
     # 'RawData'                        # the raw dataframe itself, untouched
-    # 'allFeatures'                    # list of column labels ie. features
+    # 'allFeatures'                    # list of column names ie. features
     # 'numericalFeatureList'           # list of numerical features
     # 'categoricalFeatureList'         # list of categorical features
     # 'categoriesPerCategoricalColumn' : dictionary where each key is a categorical feature, key returns list of possible categories for that feature
@@ -67,16 +69,25 @@ def importData(targetVariable, path): #returns 'importedData' dictionary. Keys a
         'targetClasses'                  : list(df[targetVariable].value_counts().index)
     }
     return importedData
-def compute_performance_Array(yhat, y):
+
+def compute_performance_Array(yhat, y): #returns percentage of matches between yhat and y (ie. y_predicted and y_actual)
+    #Parameters must be arrays, not dataframes/series
     correctCounter = 0
     for index in range((y.shape[0])):
         if (y[index]) == yhat[index]:
             correctCounter += 1
     acc = (correctCounter / y.shape[0])
     return (round(acc*100,2))
-def n_choose_k(n,k):
+
+def n_choose_k(n,k): #returns a single number, should be an integer
+    #function to compute the n_choose_k formula: https://byjus.com/n-choose-k-formula/
+    #used for the exhaustiveFeatureSearch() function for to calculate
+    #total number of combinations of features
     return math.factorial(n)/(math.factorial(k)*(math.factorial(n-k)))
-def calculateNumIterations(numberOfFeatures):
+
+def calculateNumIterations(numberOfFeatures): #returns a panda series containing each number of iterations per feature set
+    #uses n_choose_k() function to calculate how many iterations the exhaustiveFeatureSearch() will take
+    #thus, giving the user an idea how long exhaustiveFeatureSearch() may take to compute
     n = numberOfFeatures
     results = []
     for k in range(2,n+1):
@@ -85,11 +96,14 @@ def calculateNumIterations(numberOfFeatures):
     print("For n=",n,sep='')
     print(str(arr.sum().astype(int))+" total iterations")
     return pd.Series(results, index = range(2,n+1))
+
 def visualCheck(yhat,y): #returns concatenated yhat + y
+    #can use this to display y_predicted and y_actual next to each other to visually check them, if needed.
     yhatSeries = pd.Series(data=yhat)
     ySeries = pd.Series(data=y)
     compareY_df = pd.concat([ySeries,yhatSeries],axis=1)
     return compareY_df
+
 def hyperParameterSearch(model,paramGrid,detailedProgressBar=False): #returns bestAccuracy, bestModel, bestParameters
     #Takes ParamterGrid() and a Model() estimator and
     #searches for best set of hyper-parameters using compute_performance_Array()
@@ -143,6 +157,7 @@ def hyperParameterSearch(model,paramGrid,detailedProgressBar=False): #returns be
     print("Best Found Parameters:" , bestParameters)
     #Return results
     return bestAccuracy, bestModel, bestParameters
+
 def exhaustiveFeatureSearch(model, startingFeatures): #returns output, results
     # exhaustiveFeatureSearch generates every possible combination of these features
     # and then train/evaluate our models for each combination of features to find which feature combo delivers the highest accuracy
@@ -201,6 +216,7 @@ def exhaustiveFeatureSearch(model, startingFeatures): #returns output, results
         print("Optimal features:",results[index][0])
         print("Accuracy:",results[index][1])
     return output, results
+
 def recursiveFeatureSearch(model, startingFeatures): #returns bestAcc, bestFeatureSet, accAccumulator
     #powered by sklearn.feature_selection.RFE
     #we use a loop to iteratively reduce 'n_features_to_select' down to 2
@@ -245,6 +261,7 @@ class X_Encoder(BaseEstimator, TransformerMixin):
                 X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
         X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
         return X_encoded
+
 def preProcessingPipeline(selectedFeatures, splitTrainTest=True): #returns Xtrain, Xtest, ytrain, ytest. If splitTrainTest=False, returns X,y
 
     ## CREATE PIPES ##
@@ -262,7 +279,7 @@ def preProcessingPipeline(selectedFeatures, splitTrainTest=True): #returns Xtrai
         return X_pipe.transform(RawData[selectedFeatures]), y_pipe.transform(RawData[targetVariable])
 
 ##VISUALIZATIONS
-def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
+def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature importances
     importances = model.feature_importances_
     indices = np.argsort(importances)[::-1]
     fm, ax = plt.subplots(figsize=(3,8))
@@ -273,8 +290,8 @@ def showFeatureImportances(model,selectedFeatures): #for Random Forest estimator
     sns.barplot(y=[columnsEnc[i] for i in indices], x=importances[indices], label='Total',color='b')
     ax.set(ylabel="Variable",xlabel = "Variable Importance (Gini)")
     sns.despine(left=True, bottom=True)
-def displayClassProportions(exportToCSV=False):
-    #Displays class proportions, set 'exportToCSV' to True if you want to export them to a CSV file
+
+def displayClassProportions(exportToCSV=False): #Displays class proportions, set 'exportToCSV' to True if you want to export them to a CSV file
     classProportions = pd.DataFrame(columns=['Counts','Proportions'], index = RawData[targetVariable].value_counts().index)
     classProportions['Counts'] = RawData[targetVariable].value_counts().values
     classProportions['Proportions'] = (round((RawData[targetVariable].value_counts() / 2111)*100,1)).values

@@ -19,6 +19,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, ParameterGrid
+from sklearn.feature_selection import RFE
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import roc_curve, auc
 import pickle
@@ -66,13 +67,6 @@ def importData(targetVariable, path): #returns 'importedData' dictionary. Keys a
         'targetClasses'                  : list(df[targetVariable].value_counts().index)
     }
     return importedData
-def compute_performance_Series(yhat, y):
-    correctCounter = 0
-    for index in range((y.shape[0])):
-        if (y.iloc[index]) == yhat[index]:
-            correctCounter += 1
-    acc = (correctCounter / y.shape[0])
-    return (round(acc*100,2))
 def compute_performance_Array(yhat, y):
     correctCounter = 0
     for index in range((y.shape[0])):
@@ -99,19 +93,30 @@ def visualCheck(yhat,y): #returns concatenated yhat + y
 def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bestParameters
     #Takes ParamterGrid() and a Model() estimator and
     #searches for best set of hyper-parameters using compute_performance_Array()
-    numOfParams = len(paramGrid_XGB)
+    numOfParams  = len(paramGrid)
     loopCounter  = 0
     bestAccuracy = 0
+    print("Starting Search. 0% Complete...",end='\n')
     for paramaterSet in paramGrid:
         #Progress bar
-        if loopCounter   == round(numOfParams*0.20):
-            print("20% Complete...",end='\n\n')
+        if loopCounter   == round(numOfParams*0.10):
+            print("10% Complete...",end='\n')
+        elif loopCounter == round(numOfParams*0.20):
+            print("20% Complete...",end='\n')
+        elif loopCounter == round(numOfParams*0.30):
+            print("30% Complete...",end='\n')
         elif loopCounter == round(numOfParams*0.40):
-            print("40% Complete...",end='\n\n')
+            print("40% Complete...",end='\n')
+        elif loopCounter == round(numOfParams*0.50):
+            print("50% Complete...",end='\n')
         elif loopCounter == round(numOfParams*0.60):
-            print("60% Complete...",end='\n\n')
+            print("60% Complete...",end='\n')
+        elif loopCounter == round(numOfParams*0.70):
+            print("70% Complete...",end='\n')
         elif loopCounter == round(numOfParams*0.80):
-            print("80% Complete...",end='\n\n')
+            print("80% Complete...",end='\n')
+        elif loopCounter == round(numOfParams*0.90):
+            print("90% Complete...",end='\n')
         loopCounter += 1
         #Train/fit model on selected hyper-parameters
         model.set_params(**paramaterSet)
@@ -126,8 +131,93 @@ def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bes
     print("Best Found Parameters:" , bestParameters)
     #Return results
     return bestAccuracy, bestModel, bestParameters
+def exhaustiveFeatureSearch(model, startingFeatures): #returns output, results
+    # exhaustiveFeatureSearch generates every possible combination of these features
+    # and then train/evaluate our models for each combination of features to find which feature combo delivers the highest accuracy
+    # First, we need to determine if this is computationally feasible - ie. How many unique combinations can result from a list of 14 unique items?
+    # If the number is too large, then we'll have to try a different approach
+    # We'll have to use Combination mathematics to determine this.
+    # We can use the formula n-choose-k: (n k) = (!n)/(k!(n-k)!), where,
+    #   n = number of elements in the list (this is 16)
+    #   k = the size of the combination (this starts at 16, decreases down to 2 iteratively)
+    # which gives the total number of possible combinations.
+    # We then place this formula in a For Loop to determine the total number of combinations by summing up the results of the formula evaluated for each k
+    # (k ranges from 2 to 16)
+    # we have defined two methods to do this: n_choose_k(n,k) and calculateNumIterations(numberOfFeatures) which is called in the below method
+    # For the actual generation of the feature combinations, we will use the package itertools.combinations(list_of_size_n,k))
 
-##TRANSFORMERS
+    #Show how many iterations need to be computed:
+    calculateNumIterations(len(startingFeatures))
+    # Outer For Loop, looping from k = 2 to 16
+    y = encodeYPipline(RawData)
+    results = []
+    for k in range(2,len(startingFeatures)+1):
+        print("\nk combinations:",k,"\t",int(n_choose_k(len(startingFeatures),k)),"iterations") #number of combinations (iterations) for this k)
+        featureSpace = list(itertools.combinations((startingFeatures),k)) # train/evaluate model for each feature combination
+        accuracies = []
+        featureComboUsed = []
+        for index,attributeCombo in enumerate(featureSpace):   #loop over featureSpace
+
+            selectedFeatures = list(attributeCombo)
+
+            XtrainReduced, XtestReduced, ytrainReduced, ytestReduced = preProcessingPipeline( selectedFeatures )
+            acc = compute_performance_Array(model.fit(XtrainReduced,ytrainReduced).predict(XtestReduced), ytestReduced)
+            accuracies.append(acc)
+            featureComboUsed.append(attributeCombo)
+            # print(index+1,end=" ")
+        #record feature combo @ k that gave highest accuracy + store in results[] along with that feature combo
+        max = np.array(accuracies).max()
+        index = accuracies.index(max)
+        results.append((featureSpace[index],max)) #this list will be of size k
+
+    #find highest accuracy and feature combo that gave that result
+    allAcc = []
+    for i in range(len(results)):
+        allAcc.append(results[i][1])
+    val =  np.array(allAcc).max()
+    indices=[]
+    for index,acc in enumerate(allAcc): # there may be multiple feature combos that gave the same highest accuracy (although rare)
+        if acc == val:
+            indices.append(index)
+
+    #OUTPUT
+    # 1) Most optimal combination of features that yields the highest accuracy:
+    output = []
+    for index in indices:
+        output.append((results[index][0],results[index][1]))
+        # output:
+        print("Optimal features:",results[index][0])
+        print("Accuracy:",results[index][1])
+    return output, results
+def recursiveFeatureSearch(model, startingFeatures): #returns bestAcc, bestFeatureSet, accAccumulator
+    #powered by sklearn.feature_selection.RFE
+    #we use a loop to iteratively reduce 'n_features_to_select' down to 2
+    #we record the best found accuracy and its corresponding feature set out of all iterations
+
+    XtrainStartingFeatures, XtestStartingFeatures, ytrainStartingFeatures, ytestStartingFeatures = preProcessingPipeline( startingFeatures )
+    bestAcc = 0
+    accAccumulator=[]
+    for numOfFeatures in range(len(startingFeatures)-1,1,-1):
+        selector = RFE(model, n_features_to_select=numOfFeatures)
+        selector = selector.fit(XtrainStartingFeatures, ytrainStartingFeatures)
+        mask = selector.support_
+        reducedFeatureListIterator = itertools.compress(startingFeatures, mask)
+        reducedFeatureList=[]
+        for i in reducedFeatureListIterator: reducedFeatureList.append(i)
+        #Pre-process only selected features from reducedFeatureList
+        XtrainReduced, XtestReduced, ytrainReduced, ytestReduced = preProcessingPipeline( reducedFeatureList )
+        acc = compute_performance_Array(RandomForestClassifier().fit(XtrainReduced,ytrainReduced).predict(XtestReduced), ytestReduced)
+        accAccumulator.append(acc)
+        if acc > bestAcc:
+            bestAcc = acc
+            bestFeatureSet = reducedFeatureList
+
+    print("Best Found Accuracy: "  , bestAcc, "%", sep='')
+    print("Best Found Features:\n" , bestFeatureSet)
+
+    return bestAcc, bestFeatureSet, accAccumulator
+
+##PIPES + FINAL PIPELINE
 class X_Encoder(BaseEstimator, TransformerMixin):
     def __init__(self,selectedFeatures):
         self.selectedFeatures = selectedFeatures
@@ -143,6 +233,18 @@ class X_Encoder(BaseEstimator, TransformerMixin):
                 X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
         X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
         return X_encoded
+def preProcessingPipeline(selectedFeatures): #returns Xtrain, Xtest, ytrain, ytest
+
+    ## CREATE PIPES ##
+    X_pipe = make_pipeline(X_Encoder( selectedFeatures ), StandardScaler()).fit(RawData.drop(targetVariable,axis=1))
+    y_pipe = LabelEncoder().fit(RawData[targetVariable])
+
+    ## SPLIT TRAINING/TESTING PRE-PROCESSED DATA ##
+    return train_test_split(
+        X_pipe.transform(RawData[ selectedFeatures ]),
+        y_pipe.transform(RawData[targetVariable]),
+        test_size=0.25,
+        random_state=0 )
 
 ##VISUALIZATIONS
 def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
@@ -190,31 +292,42 @@ targetClasses                   = importedData['targetClasses']
 # loadedModel
 ############################################################
 
-
-## MAKE PRE-PROCESSING PIPELINE ##
-X_pipe = make_pipeline(X_Encoder(allFeatures),StandardScaler()).fit(RawData.drop(targetVariable,axis=1))
-y_pipe = LabelEncoder().fit(RawData[targetVariable])
-
-## SPLIT TRAINING/TESTING DATA ##
-Xtrain, Xtest, ytrain, ytest = train_test_split(
-    X_pipe.transform(RawData[allFeatures]),
-    y_pipe.transform(RawData[targetVariable]),
-    test_size=0.25,
-    random_state=0 )
-
-############################################################
 ## BASELINE TESTS ##
-############################################################
+#############################################################################################################################################################
 
-#RF
-#LogReg
-#KNN
-#XGBOOST
+Xtrain, Xtest, ytrain, ytest = preProcessingPipeline(set(allFeatures)-set(['Weight','Height']))
+
+#Compute baseline performance (accuracy on test set) for each model type:
+acc_rf = compute_performance_Array(  RandomForestClassifier(random_state=1) .fit(Xtrain,ytrain).predict(Xtest), ytest) #RandomForestClassifier
+acc_lg = compute_performance_Array(  LogisticRegression(random_state=1)     .fit(Xtrain,ytrain).predict(Xtest), ytest) #LogisticRegressionClassifier
+acc_nn = compute_performance_Array(  KNeighborsClassifier()                 .fit(Xtrain,ytrain).predict(Xtest), ytest) #KNeighborsClassifier
+acc_gb = compute_performance_Array(  XGBClassifier(random_state=1)          .fit(Xtrain,ytrain).predict(Xtest), ytest) #XGBClassifier
+acc_nb = compute_performance_Array(  GaussianNB()                           .fit(Xtrain,ytrain).predict(Xtest), ytest) #XGBClassifier
+
+print("Random Forest Accuracy:"         , acc_rf)
+print("Logistic Regression Accuracy:"   , acc_lg)
+print("k-Nearest Neighbours Accuracy:"  , acc_nn)
+print("XGBoost Accuracy:"               , acc_gb)
+print("Naive Bayes Accuracy:"           , acc_nb)
+
+#############################################################################################################################################################
+## FEATURE TUNING ##
+#############################################################################################################################################################
+
+feature_results_rf = recursiveFeatureSearch( RandomForestClassifier(random_state=1), list(set(allFeatures) - set(['Weight','Height'])) )
+feature_results_gb = recursiveFeatureSearch( XGBClassifier(random_state=1),          list(set(allFeatures) - set(['Weight','Height'])) )
+
+#features dropped:
+(set(allFeatures) - set(['Weight','Height'])) - set(feature_results_rf[1])
+(set(allFeatures) - set(['Weight','Height'])) - set(feature_results_gb[1])
+
+print("Random Forest Accuracy:" , feature_results_rf[0])
+print("XGBoost Accuracy:"       , feature_results_gb[0])
 
 
-############################################################
+#############################################################################################################################################################
 ## HYPER-PARAMTER TUNING ##
-############################################################
+#############################################################################################################################################################
 
 # Random Forest HP:
 paramGrid_rf = ParameterGrid({
@@ -241,100 +354,12 @@ paramGrid_XGB = ParameterGrid({
     'sampling_method'   :['uniform'] })
 
 
-results_rf  = hyperParameterSearch(RandomForestClassifier(), paramGrid_rf)
-results_XGB = hyperParameterSearch(XGBClassifier(), paramGrid_XGB)
+hp_results_rf = hyperParameterSearch( RandomForestClassifier(), paramGrid_rf)
+hp_results_gb = hyperParameterSearch( XGBClassifier(),          paramGrid_XGB)
 
-############################################################
-
-#OLD:
-
-
-
+#############################################################################################################################################################
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## TUNING ##:
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-## FEATURE SPACE TUNING ##
-# We'll conduct feature reduction tests to see how reducing the feature space impacts performance
-
-# There are a total of 16 features
-
-# We thus have to write a method that generates every possible combination of these features
-# and then train/evaluate our models for each combination of features to find which feature combo delivers the highest accuracy
-# First, we need to determine if this is computationally feasible - ie. How many unique combinations can result from a list of 14 unique items?
-# If the number is too large, then we'll have to try a different approach
-# We'll have to use Combination mathematics to determine this.
-# We can use the formula n-choose-k: (n k) = (!n)/(k!(n-k)!), where,
-#   n = number of elements in the list (this is 16)
-#   k = the size of the combination (this starts at 16, decreases down to 2 iteratively)
-# which gives the total number of possible combinations.
-# We then place this formula in a For Loop to determine the total number of combinations by summing up the results of the formula evaluated for each k
-# (k ranges from 2 to 16)
-# we have defined two methods to do this: n_choose_k(n,k) and calculateNumIterations(numberOfFeatures) which is called in the below method
-
-# For the actual generation of the feature combinations, we will use the package itertools.combinations(list_of_size_n,k))
-#find optimal combo of features for specified features and model type
-def optimalFeatureCombos(fullFeatureList,model):
-    #Show how many iterations need to be computed:
-    calculateNumIterations(len(fullFeatureList))
-    # Outer For Loop, looping from k = 2 to 16
-    y = encodeYPipline(RawData)
-    results = []
-    for k in range(2,len(fullFeatureList)+1):
-        print("\nk combinations:",k,"\t",int(n_choose_k(len(fullFeatureList),k)),"iterations") #number of combinations (iterations) for this k)
-        featureSpace = list(itertools.combinations((fullFeatureList),k)) # train/evaluate model for each feature combination
-        accuracies = []
-        featureComboUsed = []
-        for index,attributeCombo in enumerate(featureSpace):   #loop over featureSpace
-            selectedFeatures = list(attributeCombo)
-            #X = scaleXPipline( encodeXPipline(df, selectedFeatures))
-            #injectProcessedData = splitXYPipline(X,y,0.25)
-            #acc,_ = trainEvalxgbPipeline(   injectProcessedData, None) #train/evaluate model for each attribute combination
-            #For reference: models = { "lr": hyper_parameters, "rf": hyper_parameters, "gb": hyper_parameters }
-            modelResults = runEntirePipline(RawData,selectedFeatures,model,printAcc=False)
-            acc = modelResults[list(model.keys())[0]][0]
-            accuracies.append(acc)
-            featureComboUsed.append(attributeCombo)
-            # print(index+1,end=" ")
-        #record feature combo @ k that gave highest accuracy + store in results[] along with that feature combo
-        max = np.array(accuracies).max()
-        index = accuracies.index(max)
-        results.append((featureSpace[index],max)) #this list will be of size k
-
-    #find highest accuracy and feature combo that gave that result
-    allAcc = []
-    for i in range(len(results)):
-        allAcc.append(results[i][1])
-    val =  np.array(allAcc).max()
-    indices=[]
-    for index,acc in enumerate(allAcc): # there may be multiple feature combos that gave the same highest accuracy (although rare)
-        if acc == val:
-            indices.append(index)
-
-    #OUTPUT
-    # 1) Most optimal combination of features that yields the highest accuracy:
-    output = []
-    for index in indices:
-        output.append((results[index][0],results[index][1]))
-        # output:
-        print("Optimal features:",results[index][0])
-        print("Accuracy:",results[index][1])
-    return output, results
-
-fullFeatureList = list(RawData.drop([targetVariable,'Height','Weight'],axis=1).columns)
-model = { "rf": None}
-output, results = optimalFeatureCombos(fullFeatureList,model)
-
-# bestFeatureCombo = output[0][0] #if output has mutliple values, that means any one of them achieved the highest accuracy
-bestFeatureCombo = list(output[0][0])
-bestAcc = output[0][1]
-bestFeatureCombo
-bestAcc
-
-
-#MODEL PERSISTANCE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#MODEL PERSISTANCE---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 filename = r'C:\Users\Admin\Downloads\bestRFmodelV1.sav'
@@ -361,7 +386,7 @@ loadedModel
 # Or, re-train using tuned HP+Features:
 tunedFeaturesRF = ['Gender','Age','family_history_with_overweight','FCVC','NCP','CAEC','SMOKE','CH2O','SCC','FAF','TUE','CALC','MTRANS']
 modelWithTunedHP_RF = {'rf':[10000, False, 50, 'auto', 1, 2]}
-modelResults = runEntirePipline(RawData,tunedFeaturesRF,modelWithTunedHP_RF) #Running line below takes 24 seconds on MacBook Pro:
+# modelResults = runEntirePipline(RawData,tunedFeaturesRF,modelWithTunedHP_RF) #Running line takes 24 seconds on MacBook Pro:
 print("RF Accuracy:",modelResults['rf'][0]) #Should be 86.55%
 rfModel = modelResults['rf'][1] #extract rf model
 #Save model to disk:

@@ -90,34 +90,46 @@ def visualCheck(yhat,y): #returns concatenated yhat + y
     ySeries = pd.Series(data=y)
     compareY_df = pd.concat([ySeries,yhatSeries],axis=1)
     return compareY_df
-def hyperParameterSearch(model,paramGrid): #returns bestAccuracy, bestModel, bestParameters
+def hyperParameterSearch(model,paramGrid,detailedProgressBar=False): #returns bestAccuracy, bestModel, bestParameters
     #Takes ParamterGrid() and a Model() estimator and
     #searches for best set of hyper-parameters using compute_performance_Array()
+
     numOfParams  = len(paramGrid)
     loopCounter  = 0
+    endOfLine=0
     bestAccuracy = 0
+
     print("Starting Search. 0% Complete...",end='\n')
     for paramaterSet in paramGrid:
         #Progress bar
-        if loopCounter   == round(numOfParams*0.10):
-            print("10% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.20):
-            print("20% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.30):
-            print("30% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.40):
-            print("40% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.50):
-            print("50% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.60):
-            print("60% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.70):
-            print("70% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.80):
-            print("80% Complete...",end='\n')
-        elif loopCounter == round(numOfParams*0.90):
-            print("90% Complete...",end='\n')
         loopCounter += 1
+        if detailedProgressBar:
+            if loopCounter%10 == 0:
+                endOfLine+=1
+                print(round(100*(loopCounter/numOfParams)),"%",sep='',end='... ')
+                if endOfLine == 20:
+                    print()
+                    endOfLine=0
+        else:
+            if loopCounter   == round(numOfParams*0.10):
+                print("10% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.20):
+                print("20% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.30):
+                print("30% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.40):
+                print("40% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.50):
+                print("50% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.60):
+                print("60% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.70):
+                print("70% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.80):
+                print("80% Complete...",end='\n')
+            elif loopCounter == round(numOfParams*0.90):
+                print("90% Complete...",end='\n')
+
         #Train/fit model on selected hyper-parameters
         model.set_params(**paramaterSet)
         accuracy = compute_performance_Array( model.fit(Xtrain,ytrain).predict(Xtest) , ytest)
@@ -233,18 +245,21 @@ class X_Encoder(BaseEstimator, TransformerMixin):
                 X_nonencoded[columnName] = pd.Categorical(X_nonencoded[columnName], categories=categoriesPerCategoricalColumn[columnName])
         X_encoded = pd.get_dummies(X_nonencoded,drop_first=False)
         return X_encoded
-def preProcessingPipeline(selectedFeatures): #returns Xtrain, Xtest, ytrain, ytest
+def preProcessingPipeline(selectedFeatures, splitTrainTest=True): #returns Xtrain, Xtest, ytrain, ytest. If splitTrainTest=False, returns X,y
 
     ## CREATE PIPES ##
-    X_pipe = make_pipeline(X_Encoder( selectedFeatures ), StandardScaler()).fit(RawData.drop(targetVariable,axis=1))
+    X_pipe = make_pipeline(X_Encoder( selectedFeatures ), StandardScaler()).fit(RawData[selectedFeatures])
     y_pipe = LabelEncoder().fit(RawData[targetVariable])
 
-    ## SPLIT TRAINING/TESTING PRE-PROCESSED DATA ##
-    return train_test_split(
-        X_pipe.transform(RawData[ selectedFeatures ]),
-        y_pipe.transform(RawData[targetVariable]),
-        test_size=0.25,
-        random_state=0 )
+    if splitTrainTest:
+        ## SPLIT TRAINING/TESTING PRE-PROCESSED DATA ##
+        return train_test_split(
+            X_pipe.transform(RawData[ selectedFeatures ]),
+            y_pipe.transform(RawData[targetVariable]),
+            test_size=0.25,
+            random_state=0 )
+    else:
+        return X_pipe.transform(RawData[selectedFeatures]), y_pipe.transform(RawData[targetVariable])
 
 ##VISUALIZATIONS
 def showFeatureImportances(model,selectedFeatures): #for Random Forest estimators, visualize feature impotances
@@ -295,7 +310,7 @@ targetClasses                   = importedData['targetClasses']
 ## BASELINE TESTS ##
 #############################################################################################################################################################
 
-Xtrain, Xtest, ytrain, ytest = preProcessingPipeline(set(allFeatures)-set(['Weight','Height']))
+Xtrain, Xtest, ytrain, ytest = preProcessingPipeline( set(allFeatures)-set(['Weight','Height']) )
 
 #Compute baseline performance (accuracy on test set) for each model type:
 acc_rf = compute_performance_Array(  RandomForestClassifier(random_state=1) .fit(Xtrain,ytrain).predict(Xtest), ytest) #RandomForestClassifier
@@ -344,7 +359,7 @@ paramGrid_XGB = ParameterGrid({
     'random_state'      :[1],
     'n_estimators'      :[600,10000],
     'colsample_bytree'  :[0.75,0.8,0.85],
-    'max_depth'         :[20, 50, 75, 'auto'],
+    'max_depth'         :[6, 20, 50, 75],
     'reg_alpha'         :[1],
     'reg_lambda'        :[2,5,10],
     'subsample'         :[0.55, 0.6, .65],
@@ -354,50 +369,49 @@ paramGrid_XGB = ParameterGrid({
     'sampling_method'   :['uniform'] })
 
 
-hp_results_rf = hyperParameterSearch( RandomForestClassifier(), paramGrid_rf)
-hp_results_gb = hyperParameterSearch( XGBClassifier(),          paramGrid_XGB)
+hp_results_rf = hyperParameterSearch( RandomForestClassifier(random_state=1),                                            paramGrid_rf )
+hp_results_gb = hyperParameterSearch( XGBClassifier(random_state=1, use_label_encoder=False, eval_metric='mlogloss'),    paramGrid_XGB )
 
 #Results:
 #RF Hyper-Parameters:
-# Best Found Accuracy: 86.36%
-# Best Found Parameters: {'bootstrap': True, 'max_depth': 20, 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 10000, 'random_state': 1}
+# Best Found Accuracy: 86.17%
+# Best Found Parameters: {'bootstrap': False, 'max_depth': 20, 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 10000, 'random_state': 1}
 
 #############################################################################################################################################################
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #MODEL PERSISTANCE---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-filename = r'C:\Users\Admin\Downloads\bestRFmodelV1.sav'
-pickle.dump(bestRFmodel,open(filename,'wb'))
-
-# loadedModel = pickle.load(open(filename,'rb'))
-# loadedModel
-
-#--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-# Test on All Data (as sanity check - should be higher accuracy than test set)
-tunedBestModel = ?
-performance = compute_performance_Array(tunedBestModel.predict(scaleXPipline(encodeXPipline(RawData,bestFeatureCombo))),encodeYPipline(RawData))
-performance
+filename = '/Users/ryandivigalpitiya/Virtual\ Envs/TensorFlow/My\ Python\ Files/ObesityModels/bestRFmodel.sav'
+pickle.dump(  > model <  ,open(filename,'wb'))
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ## OPTIONAL: LOAD MODEL FROM DISK ##
 ################################################################################################################################
-filename = '/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/bestRFmodel.sav'
+filename = '/Users/ryandivigalpitiya/Virtual\ Envs/TensorFlow/My\ Python\ Files/ObesityModels/bestRFmodel.sav'
 loadedModel = pickle.load(open(filename,'rb'))
-loadedModel
 ################################################################################################################################
 # Or, re-train using tuned HP+Features:
 tunedFeaturesRF = ['Gender','Age','family_history_with_overweight','FCVC','NCP','CAEC','SMOKE','CH2O','SCC','FAF','TUE','CALC','MTRANS']
-modelWithTunedHP_RF = {'rf':[10000, False, 50, 'auto', 1, 2]}
-# modelResults = runEntirePipline(RawData,tunedFeaturesRF,modelWithTunedHP_RF) #Running line takes 24 seconds on MacBook Pro:
-print("RF Accuracy:",modelResults['rf'][0]) #Should be 86.55%
-rfModel = modelResults['rf'][1] #extract rf model
-#Save model to disk:
-filename = '/Users/ryandivigalpitiya/Python Notebooks/CS 9637/Project/bestRFmodel.sav'
-pickle.dump(rfModel,open(filename,'wb'))
+paramGrid_rf = ParameterGrid({
+    'random_state'        :[1],
+    'n_estimators'        :[10000],
+    'bootstrap'           :[False],
+    'max_depth'           :[20],
+    'min_samples_leaf'    :[1],
+    'min_samples_split'   :[2]
+    })
+Xtrain,Xtest,ytrain,ytest = preProcessingPipeline(tunedFeaturesRF)
 
+model_rf = RandomForestClassifier(random_state=1)
+model_rf.set_params(**paramGrid_rf[0]) #set tuned parameters
+acc = compute_performance_Array(model_rf.fit(Xtrain,ytrain).predict(Xtest), ytest)
+print("RF Accuracy:",acc) #Should be 86%
+
+#Save model to disk:
+filename = '/Users/ryandivigalpitiya/Virtual\ Envs/TensorFlow/My\ Python\ Files/ObesityModels/bestRFmodel.sav'
+pickle.dump( model_rf ,open(filename,'wb'))
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -405,37 +419,19 @@ pickle.dump(rfModel,open(filename,'wb'))
 
 #RF
 #trained model:
-# showFeatureImportances(rfModel,tunedFeaturesRF)
+# showFeatureImportances(model_rf,tunedFeaturesRF)
 #loaded model from disk:
 showFeatureImportances(loadedModel,tunedFeaturesRF)
-
-#XGBoost
-tunedFeaturesGB = ['Gender', 'Age', 'family_history_with_overweight', 'FAVC', 'NCP', 'CAEC', 'CH2O', 'SCC', 'FAF', 'TUE', 'CALC']
-modelWithTunedHP_GB = {'gb':[600, 0.75, 20, 1, 5, 0.6, 0.5, 0.5, 0.01, 'uniform']}
-modelResults = runEntirePipline(RawData,tunedFeaturesGB,modelWithTunedHP_GB)
-print("GB Accuracy:",modelResults['gb'][0])
-gbModel = modelResults['gb'][1] #extract gb model
-showFeatureImportances(gbModel,tunedFeaturesGB)
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ## GENERATING MULTI-CLASSIFICATION CONFUSION MATRIX ##
 
 #generate test set, use test set to generate my Predicted column + Actual column:
-X = scaleXPipline( encodeXPipline(RawData, optFeatures))
-y = encodeYPipline(RawData)
-injectProcessedData = splitXYPipline(X,y,0.25)
+Xtrain,Xtest,ytrain,ytest = preProcessingPipeline(tunedFeaturesRF)
 
-# injectProcessedData.append(injectXtrain)
-# injectProcessedData.append(injectYtrain)
-# injectProcessedData.append(injectXtest)
-# injectProcessedData.append(injectYtest)
-# Thus: xtest = injectProcessedData[2], ytest = injectProcessedData[3]
-xtest = injectProcessedData[2]
-ytest = injectProcessedData[3] #length y: 528
-# compute_performance_Array(loadedModel.predict(xtest),ytest)
-predVSactual = np.zeros((ytest,2))
-pred = loadedModel.predict(xtest)
+predVSactual = np.zeros((len(ytest),2))
+pred = model_rf.predict(Xtest)
 predVSactual[:,0] = pred
 predVSactual[:,1] = ytest #actual
 
@@ -477,7 +473,7 @@ from scipy import interp
 y_test_enc_df = pd.get_dummies(ytest,drop_first=False)
 y_test_enc = y_test_enc_df.to_numpy()
 
-y_score = loadedModel.predict_proba(xtest)
+y_score = model_rf.predict_proba(Xtest)
 fpr = dict()
 tpr = dict()
 roc_auc = dict()

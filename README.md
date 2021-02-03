@@ -12,7 +12,7 @@
 >
 > - GridSearch without Cross-Validation
 > - Exhaustive search of optimal combinations of features, instead of using Recursive Feature Elimination (RFE)
-> - Made my own pre-processing pipelines + pipes
+> - Made my own pre-processing pipeline / transformers
 
 
 

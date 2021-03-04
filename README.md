@@ -4,11 +4,11 @@
 
 > #### **Note:**
 >
-> In order to learn and challenge myself,  I coded this project from scratch as much as I could, rather than use existing libraries. The code is in the **Master** branch. Now that I finished my project, I re-wrote my code to use existing libraries so that it follows industry-standard libraries and coding practices found in Data Science + AI/ML. It is much easier to read and follow compared to the version found in the **Master** branch. The re-written code is in the **Re-Factored** branch.
+> In order to learn and challenge myself,  I initially coded this project from scratch as much as I could, rather than use existing libraries - however, now that I finished my project, I re-factored my code to use existing libraries so that it follows industry-standard libraries and coding practices found in Data Science + AI/ML. It is much easier to read and follow compared to the version I submitted for the course's final project. The re-factored code has been merged into the Master branch.
 >
 > ------
 >
-> #### What I Coded From Scratch:
+> #### What I Initially Coded From Scratch:
 >
 > - GridSearch without Cross-Validation
 > - Exhaustive search of optimal combinations of features, instead of using Recursive Feature Elimination (RFE)

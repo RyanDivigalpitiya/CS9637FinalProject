@@ -40,7 +40,7 @@ def importData(targetVariable, path): #returns 'importedData' dictionary. Keys a
     # 'categoriesPerCategoricalColumn' : dictionary where each key is a categorical feature, key returns list of possible categories for that feature
     # 'targetClasses'                  : list of all possible target classes found in the target variable
 
-    #read in csv fata
+    #read in csv data
     df = pd.read_csv(path)
     # Split Numerical vs. Categorical Data, return them as individual lists:
     def getNumericalAndCatColumnLists():
@@ -81,7 +81,7 @@ def compute_performance_Array(yhat, y): #returns percentage of matches between y
 
 def n_choose_k(n,k): #returns a single number, should be an integer
     #function to compute the n_choose_k formula: https://byjus.com/n-choose-k-formula/
-    #used for the exhaustiveFeatureSearch() function for to calculate
+    #used for the exhaustiveFeatureSearch() function to calculate
     #total number of combinations of features
     return math.factorial(n)/(math.factorial(k)*(math.factorial(n-k)))
 

@@ -40,7 +40,9 @@ Reproducibility:  Sufficient explanation to reproduce the analysis.
 ‍
 Results: Ideally you would have included more results (confusion matrix, ROC, etc.) for the XGBoost model in your figures. Clearly for you, the Random forest was better. But to be most convincing, you would demonstrate this in your figures. For example, a figure with the ROCs for the Random forst and XGBoost models on the same plot so we can appreciate the differences (if any). Was the XGBoost model still good at predicting obese vs. not obese, but more easily confused the varying levels of obesity (like the random forest model)?
 ‍
+
 Discussion: Good discussion of limitations (especially geopgraphic restriction of the dataset)
 ‍
+
 Interpretation: Interpretation is most important for the discussion - great!
 

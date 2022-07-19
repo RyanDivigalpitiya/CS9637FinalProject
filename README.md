@@ -24,3 +24,15 @@
 
 ### Final Grade: 98/100
 
+Professor's Feedback:
+
+Overall: Overall project goal is clearly stated and the importance is justified.
+‍Writing Quality: Clear, concise, simple. Great!
+‍Visualization: Clean!
+‍Introduction: Clearly explained the problem you are addressing.
+‍Methods: Clear, great job! Good work dummy-coding the categorical variables. That is an easy oversight. Although arguments could be made that it's unfair to compare models with different features (since you permute across feature combos and choose the best combo), it is clear from your motivation that this is a non-issue in your project.
+‍Reproducibility:  Sufficient explanation to reproduce the analysis.
+‍Results: Ideally you would have included more results (confusion matrix, ROC, etc.) for the XGBoost model in your figures. Clearly for you, the Random forest was better. But to be most convincing, you would demonstrate this in your figures. For example, a figure with the ROCs for the Random forst and XGBoost models on the same plot so we can appreciate the differences (if any). Was the XGBoost model still good at predicting obese vs. not obese, but more easily confused the varying levels of obesity (like the random forest model)?
+‍Discussion: Good discussion of limitations (especially geopgraphic restriction of the dataset)
+‍Interpretation: Interpretation is most important for the discussion - great!
+
